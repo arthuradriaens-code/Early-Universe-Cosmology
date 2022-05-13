@@ -1,128 +1,130 @@
 from cProfile import label
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+from alive_progress import alive_bar
 
-#global parameters:
-Omega_m = 0.32
-Omega_r = 9.4*10**(-5)
-Omega_l = 0.7
-h = 0.7
+def equations(a, X, k, h, Omega_r, Omega_m, Omega_l):
+    Phi,Theta0,Theta1,delta,v = X
+    H0 = (100)/(300000)*h
+    num = H0*np.sqrt(Omega_r + Omega_m*a + Omega_l*(a**4))
 
-def num(a):
-    return np.sqrt(Omega_r*(a**(-4)) + Omega_m*(a**(-3)) + Omega_l)
+    DeltaPhi = 1/(num**2)*(0.5*(H0**2)*(Omega_m*delta + (4*Omega_r*Theta0)/a) - (1/3)*a*(k**2)*Phi) - (Phi/a)
+    DeltaTheta0 = -DeltaPhi - ((k*Theta1)/num)
+    DeltaTheta1 = (k/(3*num))*(Theta0-Phi)
+    Deltadelta = ((k*v)/(num)) - 3*DeltaPhi
+    Deltav = (k/(num))*Phi - (v/a)
+    return [DeltaPhi,DeltaTheta0,DeltaTheta1,Deltadelta,Deltav]
 
-def DeltaPhi(delta,Theta0,a,delta_a,Phi,x):
-    return (0.5*(Omega_m*delta + 4*Omega_r*Theta0)/(a*num(a)**2) - (x**2)*Phi/(3*a**3*(num(a)**2)) - Phi/a)*delta_a
+def inits(k,h,a0,Omega_r,Omega_m,Omega_l):
+    H0 = (100)/(300000)*h
+    num0 = H0*np.sqrt(Omega_r + Omega_m*a0 + Omega_l*(a0**4))
+    return [1,0.5,-k*a0/(6*num0),1.5,k*a0/(2*num0)]
 
-def DeltaTheta0(Theta1,deltaPhi,a,delta_a,x):
-    return (x*Theta1/(a**2*num(a)))*delta_a - deltaPhi
+#global parameters
+a0 = 1e-7
+afin = 10**(-2)
+alist = np.geomspace(a0, afin, 1000)
 
-def DeltaTheta1(Theta0,Phi,a,delta_a,x):
-    return (x*(Theta0-Phi)/(3*a**2*num(a)))*delta_a
-
-def Deltadelta(DeltaPhi,v,delta_a,a,x):
-    return -3*DeltaPhi - (x*v*delta_a)/(a**2*num(a)) #notice i transformed iv\rightarrow v
-
-def Deltav(Phi,a,v,delta_a,x):
-    return (-(x*Phi)/(a**2*num(a)) - v/a)*delta_a #same here
+"""
+Below is the Phi plot, comment out if not used.
+"""
 
 
-#variable parameters
-N= 10000
-alist = np.logspace(-9,-7,N)
-Transfer = []
+#local parameters
+k_array = np.array([0.001, 0.01, 0.1, 1.0])
+N_k = len(k_array)
+solutions_array = np.zeros((N_k, 5, 1000))
+for k_idx,k in enumerate(k_array):
+    #LambdaCDM
+    Omega_m = 0.32
+    Omega_r = 9.4*10**(-5)
+    Omega_l = 0.68
+    aeq = Omega_r/Omega_m
+    h = 0.7
+    H0 = (100)/(300000)*h
+    keq = np.sqrt(2 * Omega_m / aeq) * H0
+    h = 0.7
 
-for x in np.linspace(1,5000000,20):
-    Theta0list = np.zeros(N)
-    Theta1list = np.zeros(N)
-    Philist = np.zeros(N)
-    vlist = np.zeros(N)
-    deltalist = np.zeros(N)
+    initialvalues = inits(k,h,a0,Omega_r,Omega_m,Omega_l)
+    sol = solve_ivp(equations, [a0, afin], initialvalues, args=(k,h, Omega_r, Omega_m, Omega_l), dense_output=True)
+    z = sol.sol(alist)
+    solutions_array[k_idx] = z
 
-    #initial conditions
-    vlist[0] = -x/(2*10**(-7)*num(10**(-7)))
-    Philist[0] = 1.0
-    Theta0list[0] = 0.5
-    deltalist[0] = 1.5
-    Theta1list[0] = vlist[0]/3
-    for i in range(len(alist)-1):
-        Delta_a = alist[i+1]-alist[i]
-        DeltaPhi_ = DeltaPhi(deltalist[i],Theta0list[i],alist[i],Delta_a,Philist[i],x)
-        DeltaTheta0_ = DeltaTheta0(Theta1list[i],DeltaPhi_,alist[i],Delta_a,x)
-        DeltaTheta1_ = DeltaTheta1(Theta0list[i],Philist[i],alist[i],Delta_a,x)
-        Deltadelta_ = Deltadelta(DeltaPhi_,vlist[i],Delta_a,alist[i],x)
-        Deltav_ = Deltav(Philist[i],alist[i],vlist[i],Delta_a,x)
-        
-        vlist[i+1] = vlist[i] + Deltav_
-        Philist[i+1] = Philist[i] + DeltaPhi_
-        Theta0list[i+1] = Theta0list[i] + DeltaTheta0_
-        deltalist[i+1] = deltalist[i] + Deltadelta_
-        Theta1list[i+1] = Theta1list[i] + DeltaTheta1_
-
-    plt.plot(alist,Philist,label="y={}".format(x*0.00456/h))
-    plt.xscale('log')
-    print(x)
-    Transfer.append(Philist[5000]*10)
+for idx in range(N_k):
+  plt.plot(alist, solutions_array[idx, 0], label=f"k = {k_array[idx]}" + r" Mpc$^{-1}$") #solutions_array[idx, 0]: 0 as Phi is first
+plt.axvline(aeq,c='black',label="a$_{eq}$")
 plt.legend()
+plt.xscale('log')
 plt.xlabel("a")
 plt.ylabel("Φ")
 plt.show()
 
+
 """
-This is for if we get the transfer function
+Transfer function
 """
-x = np.logspace(-5,2,10000)
+#LambdaCDM
+TransferLambdaCDM = []
+k_array = np.geomspace(0.001,1,10)
+N_k = len(k_array)
+solutions_array = np.zeros((N_k, 5, 1000))
 
-T = np.log(1+0.171*x)/(0.171*x)*(1+0.284*x+(1.18*x)**2 + (0.399*x)**3 + (0.490*x)**4)**(-0.25)
+with alive_bar(N_k,title='Calculating ΛCDM',length=20,bar='filling',spinner='dots_waves2') as bar: #fun progress bar, of course not needed for the program to function
+    for k_idx,k in enumerate(k_array):
+        Omega_m = 0.32
+        Omega_r = 9.4*10**(-5)
+        Omega_l = 0.68
+        aeq = Omega_r/Omega_m
+        h = 0.7
+        H0 = (100)/(300000)*h
+        keq = np.sqrt(2 * Omega_m / aeq) * H0
 
-plt.plot(x,T,'--',label="BBKS")
-plt.plot(np.linspace(1,10000000,20)*0.00000456/h,Transfer,label="ΛCDM")
+        initialvalues = inits(k,h,a0,Omega_r,Omega_m,Omega_l)
+        sol = solve_ivp(equations, [a0, afin], initialvalues, args=(k,h, Omega_r, Omega_m, Omega_l), dense_output=True)
+        z = sol.sol(alist)
+        solutions_array[k_idx] = z
+        bar()
 
-Omega_l = 0
-h = 0.5
+for idx in range(N_k):
+    TransferLambdaCDM.append(solutions_array[idx, 0][-1])
 
-def num(a):
-    return np.sqrt(Omega_r*(a**(-4)) + Omega_m*(a**(-3)) + Omega_l)
-
-
-#variable parameters
-N= 10000
-alist = np.logspace(-9,-7,N)
-Transfer = []
-
-for x in np.linspace(1,5000000,20):
-    Theta0list = np.zeros(N)
-    Theta1list = np.zeros(N)
-    Philist = np.zeros(N)
-    vlist = np.zeros(N)
-    deltalist = np.zeros(N)
-
-    #initial conditions
-    vlist[0] = -x/(2*10**(-7)*num(10**(-7)))
-    Philist[0] = 1.0
-    Theta0list[0] = 0.5
-    deltalist[0] = 1.5
-    Theta1list[0] = vlist[0]/3
-    for i in range(len(alist)-1):
-        Delta_a = alist[i+1]-alist[i]
-        DeltaPhi_ = DeltaPhi(deltalist[i],Theta0list[i],alist[i],Delta_a,Philist[i],x)
-        DeltaTheta0_ = DeltaTheta0(Theta1list[i],DeltaPhi_,alist[i],Delta_a,x)
-        DeltaTheta1_ = DeltaTheta1(Theta0list[i],Philist[i],alist[i],Delta_a,x)
-        Deltadelta_ = Deltadelta(DeltaPhi_,vlist[i],Delta_a,alist[i],x)
-        Deltav_ = Deltav(Philist[i],alist[i],vlist[i],Delta_a,x)
-        
-        vlist[i+1] = vlist[i] + Deltav_
-        Philist[i+1] = Philist[i] + DeltaPhi_
-        Theta0list[i+1] = Theta0list[i] + DeltaTheta0_
-        deltalist[i+1] = deltalist[i] + Deltadelta_
-        Theta1list[i+1] = Theta1list[i] + DeltaTheta1_
-    print(x)
-    Transfer.append(Philist[5000]*10)
-
-plt.plot(np.linspace(1,10000000,20)*0.00000456/h,Transfer,label="sCDM")
+plt.plot(k_array/keq,TransferLambdaCDM,label='ΛCDM')
 plt.xscale('log')
 plt.yscale('log')
+
+#sCDM
+TransfersCDM = []
+solutions_array = np.zeros((N_k, 5, 1000))
+
+with alive_bar(N_k,title='Calculating sCDM',length=20,bar='filling',spinner='dots_waves2') as bar: #fun progress bar, of course not needed for the program to function
+    for k_idx,k in enumerate(k_array):
+
+        h = 0.5
+        omega_r = 9.4e-5 / 0.32
+        omega_m = 1.0
+        omega_l = 0.0
+        aeq = Omega_r/Omega_m
+        H0 = (100)/(300000)*h
+        keq = np.sqrt(2 * Omega_m / aeq) * H0
+
+        initialvalues = inits(k,h,a0,Omega_r,Omega_m,Omega_l)
+        sol = solve_ivp(equations, [a0, afin], initialvalues, args=(k,h, Omega_r, Omega_m, Omega_l), dense_output=True)
+        z = sol.sol(alist)
+        solutions_array[k_idx] = z
+        bar()
+
+for idx in range(N_k):
+    TransfersCDM.append(solutions_array[idx, 0][-1])
+
+plt.plot(k_array/keq,TransfersCDM,label="sCDM")
+plt.xscale('log')
+plt.yscale('log')
+
+x = k_array/keq
+T = np.log(1+0.171*x)/(0.171*x)*(1+0.284*x+(1.18*x)**2 + (0.399*x)**3 + (0.490*x)**4)**(-0.25)
+plt.plot(x,T,'--',label="BBKS")
 plt.legend()
-plt.xlabel("y")
+plt.xlabel("x")
 plt.ylabel("T")
 plt.show()
