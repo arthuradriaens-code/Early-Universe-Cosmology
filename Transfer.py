@@ -87,7 +87,7 @@ with alive_bar(N_k,title='Calculating ΛCDM',length=20,bar='filling',spinner='do
         bar()
 
 for idx in range(N_k):
-    TransferLambdaCDM.append(solutions_array[idx, 0][-1])
+    TransferLambdaCDM.append(solutions_array[idx, 0][-1]*(10/9))
 
 plt.plot(k_array/keq,TransferLambdaCDM,label='ΛCDM')
 plt.xscale('log')
@@ -115,7 +115,7 @@ with alive_bar(N_k,title='Calculating sCDM',length=20,bar='filling',spinner='dot
         bar()
 
 for idx in range(N_k):
-    TransfersCDM.append(solutions_array[idx, 0][-1])
+    TransfersCDM.append(solutions_array[idx, 0][-1]*(10/9))
 
 plt.plot(k_array/keq,TransfersCDM,label="sCDM")
 plt.xscale('log')
